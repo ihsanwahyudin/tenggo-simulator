@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import {
+  BUS_DOOR,
   DESK_MAX,
   DESK_MIN,
   DT,
@@ -8,42 +9,58 @@ import {
   ITEM_KINDS,
   ITEM_RESPAWN,
   ITEM_SPAWNS,
-  JANITOR_FLOOR,
-  JANITOR_ROUTE,
+  JANITORS,
   JANITOR_SPEED,
   JANITOR_WET_TIME,
+  LIFT_PHASES,
   MAX_PLAYERS,
   MAX_RACE_TIME,
+  OUTDOOR,
   PICKUP_RANGE,
+  RUN_OVER_DOWN,
+  RUN_OVER_RESPAWN,
   SEATS,
   SNAPSHOT_EVERY,
   SPILL_TIME,
+  busDocked,
   canSee,
   catchPlayer,
-  isGate,
+  hitByCar,
+  inBus,
+  inCabin,
   isSolid,
-  isStairTile,
   isStaticWet,
+  liftAt,
+  liftDoorOpen,
   newGuard,
+  newLifts,
   newSim,
+  newTraffic,
+  sendBack,
+  stairAt,
   stepDetection,
   stepGuard,
+  stepLift,
   stepPlayer,
   stepProjectile,
+  stepTraffic,
   throwItem,
   tileKey,
   tryPush,
+  type FloorPoint,
+  type GuardSim,
   type ItemKind,
+  type LiftCar,
   type Phase,
   type PlayerInput,
   type PlayerSim,
-  type FloorPoint,
-  type GuardSim,
   type Projectile,
   type ResultRow,
   type RoomMsg,
   type ServerMsg,
   type SnapMsg,
+  type Traffic,
+  type World,
 } from '@tenggo/shared';
 
 export interface Member {
@@ -71,10 +88,11 @@ const MAX_BUDGET = 6;
 const MAX_INPUTS_PER_TICK = 3;
 const MAX_QUEUE = 30;
 const MAX_DEBT = 5;
-const IDLE: PlayerInput = { s: 0, x: 0, z: 0, w: false, p: false, th: false };
+const IDLE: PlayerInput = { s: 0, x: 0, z: 0, w: false, p: false, th: false, u: false };
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const randomKind = () => ITEM_KINDS[Math.floor(Math.random() * ITEM_KINDS.length)];
+const newJanitors = () => JANITORS.map((j) => ({ ...j.route[0], wp: 1 }));
 
 export function send(ws: WebSocket, msg: ServerMsg): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -92,13 +110,19 @@ export class Room {
   private items: ItemSpawn[] = [];
   private projs: Projectile[] = [];
   private wet = new Map<number, number>(); // tileKey -> waktu kering
-  private janitor = { x: 0, z: 0, wp: 1 };
+  private janitors = newJanitors();
   private guards: GuardSim[] = GUARDS.map(newGuard);
+  private lifts: LiftCar[] = newLifts();
+  private traffic: Traffic = newTraffic();
   private results: ResultRow[] | undefined;
 
   constructor(readonly code: string) {}
 
-  private isWet = (f: number, tx: number, tz: number) => isStaticWet(f, tx, tz) || this.wet.has(tileKey(f, tx, tz));
+  // Keadaan dunia yang memengaruhi gerak: lantai basah, pintu lift, pintu bus.
+  private world: World = {
+    wet: (f, tx, tz) => isStaticWet(f, tx, tz) || this.wet.has(tileKey(f, tx, tz)),
+    doorOpen: (id) => (id === BUS_DOOR ? busDocked(this.time) : liftDoorOpen(this.lifts, id)),
+  };
 
   get joinError(): string | null {
     if (this.phase === 'desk' || this.phase === 'race') return 'Ronde sedang berjalan, coba lagi sebentar';
@@ -138,14 +162,18 @@ export class Room {
     this.projs = [];
     this.wet.clear();
     this.items = ITEM_SPAWNS.map((p) => ({ ...p, kind: randomKind(), respawnAt: 0 }));
-    this.janitor = { ...JANITOR_ROUTE[0], wp: 1 };
+    this.janitors = newJanitors();
     this.guards = GUARDS.map(newGuard);
+    this.lifts = newLifts();
+    this.traffic = newTraffic();
 
     const seats = [...SEATS].sort(() => Math.random() - 0.5);
     let i = 0;
     for (const m of this.members.values()) {
-      m.sim = newSim(seats[i].f, seats[i].x, seats[i].z);
-      i++;
+      const seat = seats[i++];
+      // Duduk menghadap mejanya: meja ada di sisi +z atau -z kursi.
+      const face = isSolid(seat.f, Math.floor(seat.x), Math.floor(seat.z) + 1) ? 0 : Math.PI;
+      m.sim = newSim(seat.f, seat.x, seat.z, face);
       m.queue = [];
       m.budget = 0;
       m.debt = 0;
@@ -179,6 +207,7 @@ export class Room {
       w: !!msg.w,
       p: !!msg.p,
       th: !!msg.th,
+      u: !!msg.u,
     });
     if (m.queue.length > MAX_QUEUE) m.queue.shift();
   }
@@ -204,6 +233,7 @@ export class Room {
     this.time += DT;
     const members = [...this.members.values()];
     const sims = members.map((m) => m.sim);
+    const closeRequests = new Set<LiftCar>();
 
     // Input pemain. Simulasi tiap pemain maju satu langkah per input, supaya prediksi client persis sama.
     for (const m of members) {
@@ -217,8 +247,8 @@ export class Room {
           m.debt--;
           continue;
         }
-        stepPlayer(m.sim, inp, this.isWet);
-        if (inp.p) tryPush(m.sim, sims);
+        stepPlayer(m.sim, inp, this.world);
+        if (inp.p) tryPush(m.sim, sims, this.world);
         if (inp.th) {
           const pr = throwItem(this.nextProjId, m.id, m.sim);
           if (pr) {
@@ -226,15 +256,21 @@ export class Room {
             this.projs.push(pr);
           }
         }
+        if (inp.u && m.sim.state === 'active') {
+          const lift = liftAt(this.lifts, m.sim);
+          if (lift) closeRequests.add(lift);
+        }
       }
       // Input tidak datang (lag atau tab di background): timer jatuh dan kebal tetap harus berjalan.
       if (n === 0) {
         if (m.sim.state === 'slip' || m.sim.state === 'down') {
-          stepPlayer(m.sim, IDLE, this.isWet);
+          stepPlayer(m.sim, IDLE, this.world);
           m.debt = Math.min(m.debt + 1, MAX_DEBT);
         } else if (m.sim.invuln > 0) m.sim.invuln = Math.max(0, m.sim.invuln - DT);
       }
     }
+
+    for (const lift of this.lifts) stepLift(lift, sims, closeRequests.has(lift));
 
     // Item di lantai
     for (const it of this.items) {
@@ -254,47 +290,59 @@ export class Room {
 
     // Proyektil
     this.projs = this.projs.filter((pr) => {
-      const res = stepProjectile(pr, members);
+      const res = stepProjectile(pr, members, this.world);
       if (res.spill) this.spill(res.spill);
       return !res.done;
     });
 
     // Petugas kebersihan dan lantai basah
-    const target = JANITOR_ROUTE[this.janitor.wp];
-    const dx = target.x - this.janitor.x;
-    const dz = target.z - this.janitor.z;
-    const d = Math.hypot(dx, dz);
-    const step = JANITOR_SPEED * DT;
-    if (d <= step) {
-      this.janitor.x = target.x;
-      this.janitor.z = target.z;
-      this.janitor.wp = (this.janitor.wp + 1) % JANITOR_ROUTE.length;
-    } else {
-      this.janitor.x += (dx / d) * step;
-      this.janitor.z += (dz / d) * step;
-    }
-    this.wetTile(JANITOR_FLOOR, Math.floor(this.janitor.x), Math.floor(this.janitor.z), JANITOR_WET_TIME);
+    this.janitors.forEach((j, i) => {
+      const { floor, route } = JANITORS[i];
+      const target = route[j.wp];
+      const dx = target.x - j.x;
+      const dz = target.z - j.z;
+      const d = Math.hypot(dx, dz);
+      const step = JANITOR_SPEED * DT;
+      if (d <= step) {
+        j.x = target.x;
+        j.z = target.z;
+        j.wp = (j.wp + 1) % route.length;
+      } else {
+        j.x += (dx / d) * step;
+        j.z += (dz / d) * step;
+      }
+      this.wetTile(floor, Math.floor(j.x), Math.floor(j.z), JANITOR_WET_TIME);
+    });
     for (const [key, until] of this.wet) if (until <= this.time) this.wet.delete(key);
 
-    // HR dan manajer berpatroli; yang terlihat terlalu lama dikembalikan ke lantai atas.
+    // Penjaga berpatroli; yang terlihat terlalu lama dikembalikan ke lantai atas. Kabin lift aman.
     this.guards.forEach((g, i) => stepGuard(g, GUARDS[i]));
     for (const m of members) {
       const s = m.sim;
-      const exposed = s.state !== 'seated' && s.state !== 'done' && this.guards.some((g) => canSee(g, s));
-      m.det = stepDetection(m.det, exposed);
+      const hidden = s.state === 'seated' || s.state === 'done' || inCabin(0, s.x, s.z) || inCabin(1, s.x, s.z);
+      m.det = stepDetection(m.det, !hidden && this.guards.some((g) => canSee(g, s)));
       if (m.det >= 1) {
         m.det = 0;
         catchPlayer(s);
       }
     }
 
-    // Finis
-    for (const m of members) {
-      if (m.sim.state !== 'active' || !isGate(m.sim.floor, Math.floor(m.sim.x), Math.floor(m.sim.z))) continue;
-      m.sim.state = 'done';
-      m.rank = this.nextRank++;
-      m.time = this.time;
-      if (this.firstFinish < 0) this.firstFinish = this.time;
+    // Lalu lintas: tertabrak mobil yang melaju = kembali ke depan pintu lobby
+    stepTraffic(this.traffic, this.time);
+    for (const { sim } of members) {
+      if (sim.state === 'seated' || sim.state === 'done') continue;
+      if (hitByCar(this.traffic, sim)) sendBack(sim, RUN_OVER_RESPAWN, RUN_OVER_DOWN);
+    }
+
+    // Finis: masuk ke bus yang sedang berhenti di halte
+    if (busDocked(this.time)) {
+      for (const m of members) {
+        if (m.sim.state !== 'active' || m.sim.floor !== OUTDOOR || !inBus(m.sim.x, m.sim.z)) continue;
+        m.sim.state = 'done';
+        m.rank = this.nextRank++;
+        m.time = this.time;
+        if (this.firstFinish < 0) this.firstFinish = this.time;
+      }
     }
 
     const allDone = members.every((m) => m.sim.state === 'done');
@@ -303,7 +351,8 @@ export class Room {
   }
 
   private wetTile(f: number, tx: number, tz: number, duration: number): void {
-    if (isSolid(f, tx, tz) || isStaticWet(f, tx, tz) || isGate(f, tx, tz) || isStairTile(f, tx, tz)) return;
+    if (isSolid(f, tx, tz) || isStaticWet(f, tx, tz) || stairAt(f, tx + 0.5, tz + 0.5)) return;
+    if (inCabin(0, tx, tz) || inCabin(1, tx, tz) || (f === OUTDOOR && inBus(tx, tz))) return;
     const key = tileKey(f, tx, tz);
     this.wet.set(key, Math.max(this.wet.get(key) ?? 0, this.time + duration));
   }
@@ -352,8 +401,10 @@ export class Room {
       items: this.items.flatMap((it, id) => (it.kind ? [{ id, k: it.kind, f: it.f, x: it.x, z: it.z }] : [])),
       projs: this.projs.map((p) => ({ id: p.id, k: p.kind, f: p.floor, x: r3(p.x), z: r3(p.z) })),
       wet: [...this.wet.keys()],
-      jan: [r3(this.janitor.x), r3(this.janitor.z)],
+      jan: this.janitors.map((j) => [r3(j.x), r3(j.z)]),
       hr: this.guards.map((g) => [r3(g.x), r3(g.z), r3(g.face)]),
+      lifts: this.lifts.map((l) => [LIFT_PHASES.indexOf(l.phase), r3(l.t)]),
+      cars: this.traffic.cars.map((c) => [c.id, c.lane, r3(c.x)]),
     };
     for (const m of this.members.values()) {
       snap.ack = m.ack;

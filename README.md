@@ -1,13 +1,23 @@
 # Tenggo Simulator
 
-Game balapan multiplayer: jam 17:00 teng, semua karyawan berebut keluar gerbang kantor.
-Kamera dari atas, 2–8 pemain per room (bisa juga main sendiri untuk latihan).
+Game balapan multiplayer: jam 17:00 teng, semua karyawan berebut pulang — turun lima lantai,
+menyeberang jalan, dan naik bus TransJakarta. Kamera dari atas, 2–8 pemain per room (bisa juga
+main sendiri untuk latihan).
 
 ## Cara main
 
 1. Satu orang membuat room, lalu membagikan kode 4 huruf atau link undangan.
 2. Host menekan **Mulai**. Semua duduk di meja sampai jam menunjukkan 17:00.
-3. Begitu "teng", turun dari ruang kerja di lantai 3 lewat tangga (tanda kuning di lantai) ke lantai 2, lalu ke lobby di lantai 1, dan keluar lewat gerbang hijau bertuliskan PULANG.
+3. Begitu "teng", cari jalan turun. Finis dihitung saat masuk ke dalam bus.
+
+| Level | Isi | Cara turun |
+|---|---|---|
+| Lantai 5 | Ruang kerja open-plan (start) | Tangga darurat di ujung barat atau timur |
+| Lantai 4 | Labirin ruang rapat | Hanya dua lift |
+| Lantai 3 | HR & Direksi, petak umpet dengan tiga penjaga | Tangga darurat |
+| Lantai 2 | Kantin, musholla, game room; lantai licin | Hanya dua lift |
+| Lantai 1 | Lobby: turnstile, kedai kopi | Pintu putar |
+| Jalan raya | Zebra cross berlampu, halte, bus | Naik bus = finis |
 
 | Aksi | Desktop | HP |
 |---|---|---|
@@ -15,13 +25,15 @@ Kamera dari atas, 2–8 pemain per room (bisa juga main sendiri untuk latihan).
 | Jalan pelan | Shift | Joystick ditekan setengah |
 | Dorong | Spasi | Tombol DORONG |
 | Lempar | E / klik | Tombol LEMPAR |
+| Tutup pintu lift | F | Tombol TUTUP PINTU LIFT |
 
-- **Lantai basah** (biru mengilap): lari di atasnya bikin terpeleset. Jalan pelan aman.
-- **Tangga** sempit dan jadi tempat rebutan; dorongan dan lemparan hanya mengenai pemain di lantai yang sama (atau sama-sama di tangga).
-- **Petak umpet di lantai 2**: HR dan Manajer berpatroli bolak-balik. Area merah di lantai adalah pandangan mereka; terlihat sekitar 0,3 detik (tepi layar memerah) berarti ketahuan dan dikembalikan ke lantai 3 tanpa item. Dinding, lemari, rak, mesin, dan tanaman menghalangi pandangan; tangga adalah zona aman. Menempel ke mereka juga ketahuan, dari arah mana pun.
-- **Petugas kebersihan** di lobby meninggalkan jejak basah yang kering setelah beberapa detik.
-- **Dorong** menjatuhkan lawan di depanmu selama 2 detik.
-- **Item** (stapler, gumpalan kertas, gelas kopi) dipungut dengan melewatinya, lalu dilempar lurus ke arah hadap. Kopi meninggalkan genangan.
+- **Sekat dan pintu**: dinding tipis berada di garis antar tile. Pintu bergaris oranye hanya muat satu orang.
+- **Lantai basah** (biru mengilap): lari di atasnya bikin terpeleset. Jalan pelan aman. Petugas kebersihan di Lantai 2 dan lobby meninggalkan jejak basah.
+- **Lift**: tiap kabin muat 4 orang dan menunggu di atas dengan pintu terbuka. Pintu menutup sendiri 4 detik setelah orang pertama masuk, atau langsung bila ada yang menekan tombol tutup pintu. Yang terlambat menunggu kabin turun, menurunkan penumpang, dan naik lagi (±8–10 detik), atau pindah ke lift satunya.
+- **Petak umpet di Lantai 3**: HR, Manajer, dan Direktur berkeliling. Area merah di lantai adalah pandangan mereka; terlihat sekitar 0,3 detik (tepi layar memerah) berarti ketahuan dan dikembalikan ke lobi lift Lantai 4 tanpa item. Dinding dan perabot tinggi menghalangi pandangan; tangga dan kabin lift adalah zona aman.
+- **Menyeberang**: jalan hanya bisa diseberangi di dua zebra cross yang lampunya bergantian. Menerobos saat merah boleh, tetapi tertabrak mobil yang melaju mengembalikan pemain ke depan pintu lobby.
+- **Halte dan bus**: masuk peron lewat gate tap-in sempit. Bus berhenti 6 detik lalu pergi; bus berikutnya datang 10 detik kemudian.
+- **Dorong** menjatuhkan lawan di depanmu selama 2 detik. **Item** (stapler, gumpalan kertas, gelas kopi) dipungut dengan melewatinya, lalu dilempar lurus. Keduanya tidak menembus dinding.
 - Setelah bangun, pemain kebal 1,5 detik (berkedip) dan selama itu juga tidak terpeleset.
 
 ## Menjalankan di lokal
@@ -42,6 +54,8 @@ npm test          # unit test aturan game
 npm run typecheck
 npm run build     # build client ke client/dist
 npm start         # server produksi: game + WebSocket di satu port (default 3000)
+npm run bot       # bot yang memainkan satu ronde sendiri melawan server lokal
+npm run bot -- KODE   # bot bergabung ke room KODE sebagai lawan
 ```
 
 ## Struktur
@@ -53,8 +67,13 @@ npm start         # server produksi: game + WebSocket di satu port (default 3000
 Server yang menentukan posisi semua pemain; client hanya mengirim input dan memprediksi
 gerakan pemain sendiri dengan fungsi `stepPlayer` yang sama, lalu dikoreksi dari snapshot server.
 
-Denah tiap lantai ada di `shared/src/map.ts` berupa ASCII dan bisa diubah langsung; legenda hurufnya (meja, rak, sofa, tangga, dan lain-lain) ada di bagian atas file itu. Angka seperti
-kecepatan, durasi jatuh, dan cooldown ada di `shared/src/constants.ts`.
+Denah semua lantai ditulis di `shared/src/building.ts`: ruangan, pintu, dan perabot ditaruh lewat
+pemanggilan fungsi (`room`, `door`, `put`), lalu server, client, dan minimap membacanya dari sana.
+Aturan lift ada di `shared/src/lifts.ts`, lalu lintas dan bus di `shared/src/street.ts`, penjaga di
+`shared/src/guards.ts`, dan angka umum seperti kecepatan dan durasi jatuh di `shared/src/constants.ts`.
+
+Gambar rancangan awal gedung ada di `design/` (dibuat oleh `design/office-design.mjs`). Itu arsip
+desain; setelah denah dipindahkan ke `building.ts`, perubahan di sana tidak otomatis ikut ke gambar.
 
 ## Deploy
 

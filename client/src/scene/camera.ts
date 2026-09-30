@@ -9,7 +9,7 @@ export class FollowCamera {
   resize(w: number, h: number): void {
     this.camera.aspect = w / h;
     // Layar portrait lebih sempit, jadi kamera dinaikkan agar sisi kiri-kanan tetap terlihat.
-    this.height = w >= h ? 12.5 : 21;
+    this.height = w >= h ? 14 : 22;
     this.camera.updateProjectionMatrix();
   }
 

@@ -35,8 +35,8 @@ export const INVULN_TIME = 1.5;
 // Ronde
 export const DESK_MIN = 5;
 export const DESK_MAX = 10;
-export const FINISH_GRACE = 45;
-export const MAX_RACE_TIME = 180;
+export const FINISH_GRACE = 60;
+export const MAX_RACE_TIME = 420;
 
 // Petugas kebersihan
 export const JANITOR_SPEED = 1.6;

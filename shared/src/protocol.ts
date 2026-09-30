@@ -66,8 +66,10 @@ export interface SnapMsg {
   items: SnapItem[];
   projs: SnapItem[];
   wet: number[]; // tileKey lantai basah dinamis
-  jan: [number, number]; // petugas kebersihan, selalu di JANITOR_FLOOR
+  jan: [number, number][]; // petugas kebersihan, urut seperti JANITORS
   hr: [number, number, number][]; // penjaga di GUARD_FLOOR: x, z, arah hadap
+  lifts: [number, number][]; // per kabin: indeks fase (LIFT_PHASES), sisa waktu fase
+  cars: [number, number, number][]; // mobil di jalan: id, lajur, x
 }
 
 export type ServerMsg = RoomMsg | SnapMsg | { t: 'joined'; id: number; code: string } | { t: 'err'; msg: string };

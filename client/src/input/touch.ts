@@ -8,6 +8,7 @@ export interface Move {
 export interface Actions {
   push: boolean;
   throw: boolean;
+  use: boolean; // tombol tutup pintu lift
 }
 
 const MAX_R = 45;
@@ -61,7 +62,11 @@ export class Joystick {
   }
 }
 
-export function bindActionButtons(actions: Actions, pushBtn: HTMLElement, throwBtn: HTMLElement): void {
+export function bindActionButtons(actions: Actions, pushBtn: HTMLElement, throwBtn: HTMLElement, useBtn: HTMLElement): void {
+  useBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    actions.use = true;
+  });
   pushBtn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     actions.push = true;

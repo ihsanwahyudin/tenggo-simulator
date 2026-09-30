@@ -18,7 +18,9 @@
       <div id="banner"></div>
       <div id="status"></div>
       <canvas id="minimap"></canvas>
-      <div id="hints">WASD gerak · Shift jalan pelan · Spasi dorong · E lempar</div>
+      <div id="info"></div>
+      <button id="btn-use" type="button" hidden>TUTUP PINTU LIFT <kbd>F</kbd></button>
+      <div id="hints">WASD gerak · Shift jalan pelan · Spasi dorong · E lempar · F tutup pintu lift</div>
       <div id="joystick"><div id="knob"></div></div>
       <div id="actions">
         <button id="btn-throw" type="button"></button>
@@ -49,10 +51,12 @@
         <button id="start" class="primary" type="button">Mulai</button>
         <p class="hint" id="room-hint"></p>
         <ul class="rules">
-          <li>Tunggu jam 17:00, lalu lari ke gerbang.</li>
+          <li>Tunggu jam 17:00, lalu turun 5 lantai, seberangi jalan, dan naik bus TransJakarta.</li>
+          <li>Lantai 4 dan 2 hanya punya lift: rebut kabinnya, lalu tutup pintunya.</li>
           <li>Lantai basah: jalan pelan, jangan lari.</li>
           <li>Dorong atau lempar barang ke lawan biar jatuh.</li>
-          <li>Lantai 2 dijaga HR: masuk area merah terlalu lama, balik ke lantai 3.</li>
+          <li>Lantai 3 dijaga HR: masuk area merah terlalu lama, balik ke Lantai 4.</li>
+          <li>Di jalan, mobil yang melaju mengembalikanmu ke depan lobby.</li>
         </ul>
       </section>
 

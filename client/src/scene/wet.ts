@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLOORS, MAP_H, MAP_W } from '@tenggo/shared';
+import { MAP_H, MAP_W, PLANS } from '@tenggo/shared';
 
 const PX = 16; // resolusi medan per tile; cukup rendah karena medannya halus
 
@@ -28,7 +28,7 @@ export class WetLayer {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.NoColorSpace;
 
-    FLOORS[floor].forEach((row, tz) => [...row].forEach((ch, tx) => ch === 'W' && this.staticKeys.push(tz * MAP_W + tx)));
+    PLANS[floor].wetCells.forEach((wet, key) => wet && this.staticKeys.push(key));
 
     this.material = new THREE.ShaderMaterial({
       transparent: true,

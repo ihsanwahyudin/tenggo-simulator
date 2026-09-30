@@ -11,7 +11,7 @@ import {
   THROW_SLIDE_SPEED,
   THROW_SLIDE_TIME,
 } from './constants';
-import { floorAt, isWall, stairAt, type FloorPoint } from './map';
+import { lineBlocked, relocate, stairAt, type FloorPoint, type World } from './map';
 import { knock, type ItemKind, type PlayerSim } from './physics';
 
 export const ITEM_KINDS: readonly ItemKind[] = ['stapler', 'kertas', 'kopi'];
@@ -42,7 +42,7 @@ export const sameLevel = (a: Located, b: Located) =>
   a.floor === b.floor || (!!stairAt(a.floor, a.x, a.z) && stairAt(a.floor, a.x, a.z) === stairAt(b.floor, b.x, b.z));
 
 /** Dorong ke arah hadap. Mengembalikan pemain yang kena. */
-export function tryPush(attacker: PlayerSim, others: PlayerSim[]): PlayerSim[] {
+export function tryPush(attacker: PlayerSim, others: PlayerSim[], world: World): PlayerSim[] {
   if (attacker.state !== 'active' || attacker.pushCd > 0) return [];
   attacker.pushCd = PUSH_COOLDOWN;
   const fx = Math.sin(attacker.face);
@@ -55,6 +55,7 @@ export function tryPush(attacker: PlayerSim, others: PlayerSim[]): PlayerSim[] {
     const d = Math.hypot(dx, dz);
     if (d > PUSH_RANGE) continue;
     if (d > 0.05 && (dx * fx + dz * fz) / d < PUSH_CONE) continue;
+    if (lineBlocked(attacker.floor, attacker.x, attacker.z, o.x, o.z, world, false)) continue; // terhalang dinding
     knock(o, fx, fz, PUSH_DOWN_TIME, PUSH_SLIDE_SPEED, PUSH_SLIDE_TIME);
     hit.push(o);
   }
@@ -77,7 +78,7 @@ export interface ProjectileResult {
 }
 
 /** Satu tick proyektil. Terbang di atas perabot, hanya dinding yang menghentikannya. */
-export function stepProjectile(pr: Projectile, targets: { id: number; sim: PlayerSim }[]): ProjectileResult {
+export function stepProjectile(pr: Projectile, targets: { id: number; sim: PlayerSim }[], world: World): ProjectileResult {
   const SUB = 2;
   const step = (ITEM_STATS[pr.kind].speed * DT) / SUB;
   const end = (hit?: number): ProjectileResult => ({
@@ -88,10 +89,10 @@ export function stepProjectile(pr: Projectile, targets: { id: number; sim: Playe
   for (let i = 0; i < SUB; i++) {
     const nx = pr.x + pr.dx * step;
     const nz = pr.z + pr.dz * step;
-    if (isWall(pr.floor, Math.floor(nx), Math.floor(nz))) return end();
+    if (lineBlocked(pr.floor, pr.x, pr.z, nx, nz, world, false)) return end();
     pr.x = nx;
     pr.z = nz;
-    pr.floor = floorAt(pr.floor, nx, nz);
+    relocate(pr);
     pr.left -= step;
     for (const t of targets) {
       if (t.id === pr.owner || !canBeHit(t.sim) || !sameLevel(pr, t.sim)) continue;
