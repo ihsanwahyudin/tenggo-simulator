@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b2030" />
+    <title>Tenggo Simulator</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" hidden>
+      <div id="clock">
+        <div id="clock-time">16:59:50</div>
+        <div id="clock-sub"></div>
+      </div>
+      <div id="alert"></div>
+      <div id="banner"></div>
+      <div id="status"></div>
+      <canvas id="minimap"></canvas>
+      <div id="hints">WASD gerak · Shift jalan pelan · Spasi dorong · E lempar</div>
+      <div id="joystick"><div id="knob"></div></div>
+      <div id="actions">
+        <button id="btn-throw" type="button"></button>
+        <button id="btn-push" type="button">DORONG</button>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <section class="panel" id="home">
+        <h1>TENGGO<span>SIMULATOR</span></h1>
+        <p class="tagline">Jam 17:00 teng, langsung go. Siapa paling cepat keluar gerbang kantor?</p>
+        <label for="name">Nama kamu</label>
+        <input id="name" maxlength="12" placeholder="Karyawan" autocomplete="off" />
+        <button id="create" class="primary" type="button">Buat room</button>
+        <div class="divider">atau gabung</div>
+        <div class="row">
+          <input id="code" maxlength="4" placeholder="KODE" autocomplete="off" />
+          <button id="join" type="button">Gabung</button>
+        </div>
+        <p class="error" id="home-error"></p>
+      </section>
+
+      <section class="panel" id="room" hidden>
+        <p class="label">Kode room</p>
+        <div id="room-code"></div>
+        <button id="copy" class="link" type="button">Salin link undangan</button>
+        <ul id="players"></ul>
+        <button id="start" class="primary" type="button">Mulai</button>
+        <p class="hint" id="room-hint"></p>
+        <ul class="rules">
+          <li>Tunggu jam 17:00, lalu lari ke gerbang.</li>
+          <li>Lantai basah: jalan pelan, jangan lari.</li>
+          <li>Dorong atau lempar barang ke lawan biar jatuh.</li>
+          <li>Lantai 2 dijaga HR: masuk area merah terlalu lama, balik ke lantai 3.</li>
+        </ul>
+      </section>
+
+      <section class="panel" id="results" hidden>
+        <h2>Hasil tenggo</h2>
+        <ol id="ranking"></ol>
+        <button id="again" class="primary" type="button">Main lagi</button>
+        <p class="hint" id="results-hint"></p>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
